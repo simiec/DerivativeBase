@@ -1,3 +1,4 @@
+
 #include <iostream>
 #include <cstring>
 #include <vector>
@@ -82,52 +83,175 @@ namespace DifferantialOperations
     return index_holder;
   }
 
-  std::vector<std::string> strSplit(std::string string_data, std::string splitter)
+  std::vector<std::string> strSplit(std::string string_data, std::string splitter, bool ignoreBracket = false)
   {
-    std::vector<std::string> string_array;
+      std::vector<std::string> string_array;
 
-    const int string_length = string_data.length();
-    char* char_array = new char[string_length + 1];
-    std::strcpy(char_array, string_data.c_str());
+      if (ignoreBracket)
+      {
+          std::string segment;
+          int depth = 0;
+          for (size_t i = 0, start = 0; i < string_data.length(); ++i) {
+              if (string_data[i] == '{') {
+                  ++depth;
+              }
+              else if (string_data[i] == '}') {
+                  --depth;
+              }
+              else if (depth == 0 && string_data.substr(i, splitter.length()) == splitter) {
+                  string_array.push_back(string_data.substr(start, i - start));
+                  i += splitter.length() - 1;
+                  start = i + 1;
+              }
+              else if (i == string_data.length() - 1) {
+                  string_array.push_back(string_data.substr(start, i - start + 1));
+              }
+          }
+      }
+      else
+      {
+          char* char_array = new char[string_data.length() + 1];
+          std::strcpy(char_array, string_data.c_str());
 
-    char* tmp_array = std::strtok(char_array, splitter.c_str());
-    while (tmp_array)
-    {
-      string_array.push_back(tmp_array);
-      tmp_array = std::strtok(nullptr, splitter.c_str());
-    }
-    delete[] char_array;
+          char* tmp_array = std::strtok(char_array, splitter.c_str());
+          while (tmp_array)
+          {
+              string_array.push_back(tmp_array);
+              tmp_array = std::strtok(nullptr, splitter.c_str());
+          }
+          delete[] char_array;
+      }
 
-    return string_array;
+      return string_array;
   }
 
   class DifferantialTransformation
   {
-
+    
   };
 
-
-  class Derivative
+  class DifferantialExpression
   {
-    Derivative(std::string derivative_format)
-    {
-      // Latex based string format
-      // Derivative Format should be:
-      // "\func{w,x} = \func{u,x}
+  protected:
+    std::shared_ptr<specialKey> expression;
+
+  public:
+    DifferantialExpression(std::shared_ptr<specialKey> expression_) : expression(expression_) {
 
     }
-
-
   };
 
-  class FunctionParser
+  class Scalar : public DifferantialExpression{
+  public:
+    
+    Scalar(std::shared_ptr<specialKey> expression_) : DifferantialExpression(expression_){
+      scalar_value = expression_->key_function;
+    }
+    std::string getValue(){
+      return scalar_value;
+    }
+
+  private:
+    std::string scalar_value;
+  };
+
+  class Function : public DifferantialExpression
   {
-    FunctionParser(char key_symbol, std::vector<char> dependent_variable[])
+  public:
+
+    Function(std::shared_ptr<specialKey> expression_) : DifferantialExpression(expression_)
     {
+      if (expression_->key_function != "f"){
+        throw std::invalid_argument("Function object must have 'f' keyword!");
+      }
+
+
+      std::string nested_expression = expression_->nested_expression;
+      std::vector<std::string> splitted_nested_expression = strSplit(nested_expression, ",");
+      function_key = splitted_nested_expression.at(0);
+      std::cout <<"Function.functionKey(): " << function_key << std::endl;
+      for (int i = 1; i < splitted_nested_expression.size(); i++){
+        derivative_keys.push_back(splitted_nested_expression.at(i));
+      }
+    }
+
+    std::string functionKey(){
+      return function_key;
+    }
+
+    std::vector<std::string> derivativeKeys(){
+      return derivative_keys;
+    }
+
+  private:
+    std::string function_key;
+    std::vector<std::string> derivative_keys;
+  };
+
+
+  class Derivative : public DifferantialExpression
+  {
+  public:
+
+    Derivative(std::shared_ptr<specialKey> expression_) : DifferantialExpression(expression_)
+    {
+      if (expression_->key_function != "d"){
+        throw std::invalid_argument("Derivative object must have 'd' keyword!");
+      }
+
+      int nested_expression_counter = 0;
+
       
+      std::vector splitted_expression = strSplit(expression_->nested_expression, ",", true);
+
+      if (splitted_expression.at(0).at(0) == '/'){
+        // If first expression is an DifferentialExpression
+        std::shared_ptr<specialKey> nested_expression = expression_->nested_special_key.at(nested_expression_counter);
+        nested_expression_counter++;
+        
+        if (nested_expression->key_function == "d"){
+          derived_expression = std::make_shared<Derivative>(nested_expression);
+        }
+        else if (nested_expression->key_function == "f"){
+          derived_expression = std::make_shared<Function>(nested_expression);
+        }
+
+      }
+      else{
+        // If first expression is scalar
+        std::shared_ptr<specialKey> expr = std::make_shared<specialKey>();
+        expr->key_function = splitted_expression.at(0);
+        derived_expression = std::make_shared<Scalar>(expr);  
+      }
+
+      for (int i = 1; i < splitted_expression.size(); i++){
+        if (splitted_expression.at(i).at(0) == '/'){
+          std::shared_ptr<specialKey> nstd_expr = expression_->nested_special_key.at(nested_expression_counter);
+          nested_expression_counter++;
+          
+          if (nstd_expr->key_function == "d"){
+            throw std::invalid_argument("Derivative key cannot be another derivative!");
+          }
+          else if (nstd_expr->key_function == "f"){
+            std::shared_ptr<DifferantialExpression> function = std::make_shared<Function>(nstd_expr);
+            derivative_keys.push_back(function);
+          }
+        }
+        else{
+          std::shared_ptr<specialKey> expr = std::make_shared<specialKey>();
+          expr->key_function = splitted_expression.at(i);
+          std::shared_ptr<DifferantialExpression> scalar = std::make_shared<Scalar>(expr);
+          derivative_keys.push_back(scalar);
+        }
+      }
     }
 
+  private:
+    std::shared_ptr<DifferantialExpression> derived_expression;
+    std::vector<std::shared_ptr<DifferantialExpression>> derivative_keys;
+
   };
+
 
   class StringDerivative
   {
@@ -135,22 +259,61 @@ namespace DifferantialOperations
       StringDerivative(std::string string_derivative_)
       {
         std::string string_derivative = removeSpaces(string_derivative_);
-        splitOuterOperator(string_derivative);
-        std::vector<std::shared_ptr<specialKey>> expression_tree = getSpecialKey(string_derivative);
-        for (auto &tree_element : expression_tree)
-        {
-          std::cout << "Key expression: " << tree_element->key_function << std::endl;
-          std::cout << "Value nested: " << tree_element->nested_expression << std::endl;
+        std::vector<std::vector<std::shared_ptr<specialKey>>> specialKeyVector;
 
-          if (tree_element->nested_special_key.size() != 0)
-          {
-            for (auto & nested_element : tree_element->nested_special_key)
-            {
-              std::cout << "Nested Key expression: " << nested_element->key_function << std::endl;
-              std::cout << "Nested Value nested: " << nested_element->nested_expression << std::endl;
+        for (auto &splitted_expression: splitOuterOperator(string_derivative)) {
+          bool is_operator = false;
+          for (char valid_operator : OPERATORS){
+            if (splitted_expression.length() > 0){
+              if (splitted_expression.at(0) == valid_operator){
+              is_operator = true;
+              }
             }
-          } 
+          }
 
+          if (is_operator){
+            
+          }
+          else{
+            std::vector<std::shared_ptr<specialKey>> special_key = getSpecialKey(splitted_expression);
+            if(special_key.size() > 0){
+              if (special_key.at(0)->key_function == "d"){
+                std::shared_ptr<Derivative> derivative;
+                derivative = std::make_shared<Derivative>(special_key.at(0));
+              }
+              else if(special_key.at(0)->key_function == "f"){
+                std::shared_ptr<Function> function;
+                function = std::make_shared<Function>(special_key.at(0));
+              }
+            }
+          }
+        }
+
+
+
+        for (auto &expression_tree: specialKeyVector)
+        {
+          for (auto &tree_element : expression_tree)
+          {
+            std::cout << "Key expression: " << tree_element->key_function << std::endl;
+            std::cout << "Value nested: " << tree_element->nested_expression << std::endl;
+            std::cout << "Scope of Special Key: " << tree_element->scope_of_special_key.first << " " << tree_element->scope_of_special_key.second << std::endl;
+            if (tree_element->key_function == "d"){
+              // Means it is a derivative and hold it as derivative
+              
+            }
+
+            if (tree_element->nested_special_key.size() != 0)
+            {
+              for (auto & nested_element : tree_element->nested_special_key)
+              {
+                std::cout << "Nested Key expression: " << nested_element->key_function << std::endl;
+                std::cout << "Nested Value nested: " << nested_element->nested_expression << std::endl;
+                std::cout << "Scope of Special Key: " << nested_element->scope_of_special_key.first << " " << nested_element->scope_of_special_key.second << std::endl;
+
+              }
+            } 
+          }
         }
       }
 
@@ -262,45 +425,45 @@ namespace DifferantialOperations
         return false;
       }
 
-      std::shared_ptr<specialKey> createSpecialKey(const std::string& expression, int special_key_index) {
-        std::shared_ptr<specialKey> special_key_struct = std::make_shared<specialKey>(); 
+    std::shared_ptr<specialKey> createSpecialKey(const std::string& expression, int special_key_index) {
+      std::shared_ptr<specialKey> special_key_struct = std::make_shared<specialKey>(); 
 
-        std::string tmp_special_key = expression.substr(special_key_index + 1, expression.length());
+      std::string tmp_special_key = expression.substr(special_key_index + 1, expression.length());
 
-        if (strFind(tmp_special_key,'{').size() == 0)
-          throw std::invalid_argument("All special expressions starting with '/' should encapsulate including data with brackets '{}'!");
-        else if (strFind(tmp_special_key,'/').size() != 0 && strFind(tmp_special_key,'/').at(0) < strFind(tmp_special_key,'{').at(0))
-          throw std::invalid_argument("All special expressions starting with '/' should encapsulate including data with brackets '{}'!");
+      if (strFind(tmp_special_key,'{').size() == 0)
+        throw std::invalid_argument("All special expressions starting with '/' should encapsulate including data with brackets '{}'!");
+      else if (strFind(tmp_special_key,'/').size() != 0 && strFind(tmp_special_key,'/').at(0) < strFind(tmp_special_key,'{').at(0))
+        throw std::invalid_argument("All special expressions starting with '/' should encapsulate including data with brackets '{}'!");
 
-        std::string key_function = tmp_special_key.substr(0,strFind(tmp_special_key,'{').at(0));
+      std::string key_function = tmp_special_key.substr(0,strFind(tmp_special_key,'{').at(0));
 
-        if (!isValidKey(key_function))
-          throw std::invalid_argument(std::string("The given '"+ key_function + "' key is not a valid key!\n\t\tAcceptable keys are: f, d, i, p, e, cos, sin, cosh, sinh, frac"));
+      if (!isValidKey(key_function))
+        throw std::invalid_argument(std::string("The given '"+ key_function + "' key is not a valid key!\n\t\tAcceptable keys are: f, d, i, p, e, cos, sin, cosh, sinh, frac"));
 
-        std::string nested_expression = extractSubstring(tmp_special_key);
+      std::string nested_expression = extractSubstring(tmp_special_key);
 
-        int starting_point = special_key_index + strFind(tmp_special_key, '{').at(0) + 1;
-        int end_point = starting_point + 1 + nested_expression.length() + 1;
+      int starting_point = special_key_index + strFind(tmp_special_key, '{').at(0) + 1;
+      int end_point = starting_point + 1 + nested_expression.length() + 1;
 
-        special_key_struct->key_function = key_function;
-        special_key_struct->nested_expression = nested_expression;
-        special_key_struct->scope_of_special_key = std::pair<int,int>(starting_point, end_point);
+      special_key_struct->key_function = key_function;
+      special_key_struct->nested_expression = nested_expression;
+      special_key_struct->scope_of_special_key = std::pair<int,int>(starting_point, end_point);
 
-        return special_key_struct;
-      }
+      return special_key_struct;
+    }
 
-      std::vector<std::shared_ptr<specialKey>> getSpecialKey(const std::string &expression){
-        std::vector<std::shared_ptr<specialKey>> expression_tree;
+    std::vector<std::shared_ptr<specialKey>> getSpecialKey(const std::string &expression){
+      std::vector<std::shared_ptr<specialKey>> expression_tree;
 
-        std::vector<int> index_of_special_keys = strFind(expression, '/');
-        
-        for (auto &special_key_index : index_of_special_keys) {
-          std::shared_ptr<specialKey> special_key_struct = createSpecialKey(expression, special_key_index);
-            
-          if(!treeImplemention(expression_tree, special_key_struct)) {
-            expression_tree.push_back(special_key_struct);
-          }
+      std::vector<int> index_of_special_keys = strFind(expression, '/');
+      
+      for (auto &special_key_index : index_of_special_keys) {
+        std::shared_ptr<specialKey> special_key_struct = createSpecialKey(expression, special_key_index);
+          
+        if(!treeImplemention(expression_tree, special_key_struct)) {
+          expression_tree.push_back(special_key_struct);
         }
+      }
 
       return expression_tree;
     }
@@ -330,6 +493,7 @@ namespace DifferantialOperations
 
 int main()
 {
+  std::cout << "/d{/f{w,x},x} + /f{w,x} * 5" << std::endl;
   DifferantialOperations::StringDerivative str_deriv("/d{/f{w,x},x} + /f{w,x} * 5");
 
   return 0;
