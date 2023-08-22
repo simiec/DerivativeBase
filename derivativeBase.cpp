@@ -72,6 +72,7 @@ namespace DifferantialOperations
 
   std::vector<int> strFind(std::string string_data, char character)
   {
+    //The function continues by iterating over the characters of the input string and counting the occurrences of the given substring.
     std::vector<int> index_holder;
     for (size_t i = 0; i < string_data.length(); i++)
     {
@@ -137,8 +138,10 @@ namespace DifferantialOperations
 
   public:
     DifferantialExpression(std::shared_ptr<specialKey> expression_) : expression(expression_) {
-
+    
     }
+    virtual std::string getType() const = 0;  // Pure virtual function
+    virtual ~DifferantialExpression() {}      // Virtual destructor
   };
 
   class Scalar : public DifferantialExpression{
@@ -151,8 +154,36 @@ namespace DifferantialOperations
       return scalar_value;
     }
 
+    std::string getType()  const override {
+      return "Scalar";
+    }
+
   private:
     std::string scalar_value;
+  };
+
+  class Operator : public DifferantialExpression
+  {
+  public:
+    Operator(std::shared_ptr<specialKey> expression_) : DifferantialExpression(expression_)
+    {
+      if (!(expression_->key_function == "+" || expression_->key_function == "-" ||
+          expression_->key_function == "*")){
+        throw std::invalid_argument("Operator object must have '+', '-' or '*' keyword. (Which handled internally, so if you get this error, there must be a logical error!");
+      }
+      operator_key = expression_->key_function;
+    }
+
+    std::string operatorKey(){
+      return operator_key;
+    }
+
+    std::string getType() const override{
+      return "Operator";
+    }
+
+  private:
+    std::string operator_key;
   };
 
   class Function : public DifferantialExpression
@@ -169,7 +200,6 @@ namespace DifferantialOperations
       std::string nested_expression = expression_->nested_expression;
       std::vector<std::string> splitted_nested_expression = strSplit(nested_expression, ",");
       function_key = splitted_nested_expression.at(0);
-      std::cout <<"Function.functionKey(): " << function_key << std::endl;
       for (int i = 1; i < splitted_nested_expression.size(); i++){
         derivative_keys.push_back(splitted_nested_expression.at(i));
       }
@@ -181,6 +211,10 @@ namespace DifferantialOperations
 
     std::vector<std::string> derivativeKeys(){
       return derivative_keys;
+    }
+
+    std::string getType() const override{
+      return "Function";
     }
 
   private:
@@ -215,8 +249,8 @@ namespace DifferantialOperations
         else if (nested_expression->key_function == "f"){
           derived_expression = std::make_shared<Function>(nested_expression);
         }
-
       }
+
       else{
         // If first expression is scalar
         std::shared_ptr<specialKey> expr = std::make_shared<specialKey>();
@@ -246,6 +280,18 @@ namespace DifferantialOperations
       }
     }
 
+    std::shared_ptr<DifferantialExpression> derivedExpression(){
+      return derived_expression;
+    }
+
+    std::vector<std::shared_ptr<DifferantialExpression>> derivativeKeys(){
+      return derivative_keys;
+    }
+
+    std::string getType() const override{
+      return "Derivative";
+    }
+
   private:
     std::shared_ptr<DifferantialExpression> derived_expression;
     std::vector<std::shared_ptr<DifferantialExpression>> derivative_keys;
@@ -258,10 +304,14 @@ namespace DifferantialOperations
     public:
       StringDerivative(std::string string_derivative_)
       {
+        std::vector<std::shared_ptr<DifferantialExpression>> differential_expressions;
+
+        
         std::string string_derivative = removeSpaces(string_derivative_);
         std::vector<std::vector<std::shared_ptr<specialKey>>> specialKeyVector;
 
         for (auto &splitted_expression: splitOuterOperator(string_derivative)) {
+          std::cout << "Splitted Exp: " << splitted_expression << std::endl;
           bool is_operator = false;
           for (char valid_operator : OPERATORS){
             if (splitted_expression.length() > 0){
@@ -270,9 +320,12 @@ namespace DifferantialOperations
               }
             }
           }
-
           if (is_operator){
-            
+            std::shared_ptr<specialKey> special_key = std::make_shared<specialKey>(); 
+            special_key->key_function = splitted_expression;
+            std::shared_ptr<Operator> operatorPtr;
+            operatorPtr = std::make_shared<Operator>(special_key);
+            differential_expressions.push_back(operatorPtr);
           }
           else{
             std::vector<std::shared_ptr<specialKey>> special_key = getSpecialKey(splitted_expression);
@@ -280,40 +333,27 @@ namespace DifferantialOperations
               if (special_key.at(0)->key_function == "d"){
                 std::shared_ptr<Derivative> derivative;
                 derivative = std::make_shared<Derivative>(special_key.at(0));
+                differential_expressions.push_back(derivative);
               }
               else if(special_key.at(0)->key_function == "f"){
                 std::shared_ptr<Function> function;
                 function = std::make_shared<Function>(special_key.at(0));
+                differential_expressions.push_back(function);
               }
+            }
+            else{
+              std::shared_ptr<specialKey> special_key = std::make_shared<specialKey>(); 
+              special_key->key_function = splitted_expression;
+              std::shared_ptr<Scalar> scalar;
+              scalar = std::make_shared<Scalar>(special_key);
+              differential_expressions.push_back(scalar);
             }
           }
         }
 
-
-
-        for (auto &expression_tree: specialKeyVector)
-        {
-          for (auto &tree_element : expression_tree)
-          {
-            std::cout << "Key expression: " << tree_element->key_function << std::endl;
-            std::cout << "Value nested: " << tree_element->nested_expression << std::endl;
-            std::cout << "Scope of Special Key: " << tree_element->scope_of_special_key.first << " " << tree_element->scope_of_special_key.second << std::endl;
-            if (tree_element->key_function == "d"){
-              // Means it is a derivative and hold it as derivative
-              
-            }
-
-            if (tree_element->nested_special_key.size() != 0)
-            {
-              for (auto & nested_element : tree_element->nested_special_key)
-              {
-                std::cout << "Nested Key expression: " << nested_element->key_function << std::endl;
-                std::cout << "Nested Value nested: " << nested_element->nested_expression << std::endl;
-                std::cout << "Scope of Special Key: " << nested_element->scope_of_special_key.first << " " << nested_element->scope_of_special_key.second << std::endl;
-
-              }
-            } 
-          }
+        // Add loop to print here!
+        for (auto differential_expression : differential_expressions){
+          std::cout << differential_expression->getType() << std::endl;
         }
       }
 
@@ -327,6 +367,7 @@ namespace DifferantialOperations
         int positive_direction_left_bracket_counter = 0;
 
         for (int i = index; i >= 0; i--)
+
         {
           if (expression.at(i) == '{') negative_direction_left_bracket_counter++;
           else if (expression.at(i) == '}') negative_direction_right_bracket_counter++;
@@ -407,10 +448,6 @@ namespace DifferantialOperations
               if (operator_vector.size() > i)
                 splitted_by_operator.push_back(std::string(1,operator_vector.at(i).first));
             }
-        }
-
-        for (auto splitted_string : splitted_by_operator){
-          std::cout << splitted_string << std::endl;
         }
 
         return splitted_by_operator;
